@@ -1,0 +1,16 @@
+name: Claude — Retry Usage-Limited Implements
+
+on:
+  schedule:
+    # 4:05pm UTC daily — just after Claude Code Pro usage resets
+    - cron: '5 16 * * *'
+  workflow_dispatch:
+
+jobs:
+  retry:
+    permissions:
+      actions: read
+      issues: write
+    uses: Ashtakala/claude-pipeline/.github/workflows/claude-retry.yml@v1
+    secrets:
+      CLAUDE_PIPELINE_TOKEN: ${{ secrets.CLAUDE_PIPELINE_TOKEN }}

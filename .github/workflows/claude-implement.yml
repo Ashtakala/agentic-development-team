@@ -1,0 +1,26 @@
+name: Claude — Implement Issue
+
+on:
+  issues:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: 'Issue number to implement'
+        required: true
+        type: string
+
+jobs:
+  implement:
+    if: (github.event_name == 'issues' && github.event.label.name == 'ready-for-dev') || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+    uses: Ashtakala/claude-pipeline/.github/workflows/claude-implement.yml@v1
+    with:
+      issue_number: ${{ github.event.issue.number || inputs.issue_number }}
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      CLAUDE_PIPELINE_TOKEN: ${{ secrets.CLAUDE_PIPELINE_TOKEN }}

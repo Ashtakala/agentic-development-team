@@ -1,0 +1,21 @@
+name: Claude — Resolve Merge Conflicts
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number with merge conflicts to resolve'
+        required: true
+        type: string
+
+jobs:
+  resolve:
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: Ashtakala/claude-pipeline/.github/workflows/claude-resolve-conflicts.yml@v1
+    with:
+      pr_number: ${{ inputs.pr_number }}
+    secrets:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      CLAUDE_PIPELINE_TOKEN: ${{ secrets.CLAUDE_PIPELINE_TOKEN }}

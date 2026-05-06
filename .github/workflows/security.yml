@@ -1,0 +1,11 @@
+name: Security Audit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  audit:
+    uses: Ashtakala/claude-pipeline/.github/workflows/security.yml@v1

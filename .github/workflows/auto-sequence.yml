@@ -1,0 +1,18 @@
+name: Auto-sequence — Assign Next Issue
+
+on:
+  # Also fires when a seq: label is applied (e.g. by po-agent) so new issues
+  # are picked up immediately without waiting for the next deployment.
+  workflow_dispatch:
+  issues:
+    types: [labeled]
+
+jobs:
+  next-issue:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'issues' && startsWith(github.event.label.name, 'seq:'))
+    permissions:
+      issues: write
+      pull-requests: read
+    uses: Ashtakala/claude-pipeline/.github/workflows/auto-sequence.yml@v1
+    secrets:
+      CLAUDE_PIPELINE_TOKEN: ${{ secrets.CLAUDE_PIPELINE_TOKEN }}

@@ -1,0 +1,42 @@
+name: Claude — Auto Merge Approved PR
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  merge:
+    # Merge when any reviewer approves a pipeline feature PR
+    if: |
+      github.event.review.state == 'approved' &&
+      startsWith(github.event.pull_request.head.ref, 'feature/issue-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Squash merge and delete branch
+        env:
+          GH_TOKEN: ${{ secrets.CLAUDE_PIPELINE_TOKEN }}
+        run: |
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          PR_TITLE=$(gh pr view "$PR_NUMBER" --repo Ashtakala/wellness-tracker --json title --jq .title)
+          BRANCH=$(gh pr view "$PR_NUMBER" --repo Ashtakala/wellness-tracker --json headRefName --jq .headRefName)
+
+          # Squash merge via API with a clean commit message — no Co-Authored-By lines.
+          # Using gh pr merge --squash copies individual commit messages (which include
+          # "Co-Authored-By: Claude Sonnet 4.6") into the squash commit, causing Railway
+          # to see a third non-GitHub author and skip the deploy.
+          gh api \
+            --method PUT \
+            "/repos/Ashtakala/wellness-tracker/pulls/$PR_NUMBER/merge" \
+            -f commit_title="$PR_TITLE" \
+            -f commit_message="" \
+            -f merge_method="squash"
+
+          # Delete the feature branch
+          gh api \
+            --method DELETE \
+            "/repos/Ashtakala/wellness-tracker/git/refs/heads/$BRANCH" \
+            || true

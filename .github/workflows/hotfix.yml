@@ -1,0 +1,17 @@
+name: Hotfix — Immediate Assignment
+
+on:
+  issues:
+    # Covers: label added to existing issue, OR issue created with hotfix label already applied
+    types: [labeled, opened]
+
+jobs:
+  assign:
+    if: contains(github.event.issue.labels.*.name, 'hotfix') && github.event.issue.user.type != 'Bot'
+    permissions:
+      issues: write
+    uses: Ashtakala/claude-pipeline/.github/workflows/hotfix.yml@v1
+    with:
+      issue_number: ${{ github.event.issue.number }}
+    secrets:
+      CLAUDE_PIPELINE_TOKEN: ${{ secrets.CLAUDE_PIPELINE_TOKEN }}

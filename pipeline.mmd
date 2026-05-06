@@ -1,0 +1,39 @@
+flowchart TD
+    subgraph normal["Normal Lane — Feature Pipeline"]
+        A([Human submits idea]) --> B[po-agent.yml\nbreaks idea into sub-issues]
+        B --> C[Assigns seq:N labels]
+        C --> D[auto-sequence.yml\npicks lowest seq: issue]
+        D --> E[Applies ready-for-dev label]
+        E --> F[claude-implement.yml\nbuilds + opens PR]
+        F --> G[claude-review.yml\nruns CI + code review]
+        G -->|changes requested| H[claude-fix-review.yml\napplies fixes]
+        H --> G
+        G -->|approved| I[Squash merge to main]
+        I --> J[Railway deploys]
+        J --> K[post-deploy-smoketest.yml\npolls + runs checks]
+        K -->|pass| D
+        K -->|fail| L([smoke-test-blocker issue\ncreated or reopened])
+    end
+
+    subgraph hotfix["Hotfix Lane"]
+        M([Human creates issue\nwith hotfix label]) --> N{Author is a bot?}
+        N -->|yes| O([Skip])
+        N -->|no| P[hotfix.yml\napplies ready-for-dev immediately]
+        P --> F
+    end
+
+    subgraph recovery["Failure Recovery"]
+        Q[pipeline-watchdog.yml\nevery 30 min] --> R{Stalled issue?}
+        R -->|yes| S[Break into smaller issues\nresume pipeline]
+        R -->|no| T([Idle])
+
+        U[claude-retry.yml\ndaily 4:05pm UTC] --> V{Usage-limited\nfailures in last 24h?}
+        V -->|yes| W[Re-dispatch implement]
+        V -->|no| X([Nothing to retry])
+    end
+
+    subgraph support["Supporting Workflows — run on every push to main"]
+        Y[sync-main-to-features.yml\nmerge main into open PRs]
+        Z[sync-feature-flags.yml\nregister new FF_ vars in Railway]
+        AA[security.yml\nnpm audit]
+    end

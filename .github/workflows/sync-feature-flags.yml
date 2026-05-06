@@ -1,0 +1,62 @@
+name: Sync Feature Flags to Railway
+
+# Runs on every push to main. Detects newly added isEnabled() calls in the
+# diff and registers them as FF_<FLAG>=false in Railway so they appear in the
+# dashboard ready to be turned on without any manual setup.
+#
+# Requires: RAILWAY_TOKEN secret in GitHub repository settings.
+# (Settings → Secrets → Actions → New repository secret → RAILWAY_TOKEN)
+# Get your token from: railway.com → Account Settings → Tokens
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Detect and register new feature flags
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Flags in added lines that weren't in removed lines = truly new flags
+          ADDED=$(git diff HEAD~1..HEAD | grep '^+' | grep -v '^+++' \
+            | grep -oE "isEnabled\('[A-Z_]+'\)" \
+            | sed "s/isEnabled('//;s/')//" | sort -u || true)
+
+          REMOVED=$(git diff HEAD~1..HEAD | grep '^-' | grep -v '^---' \
+            | grep -oE "isEnabled\('[A-Z_]+'\)" \
+            | sed "s/isEnabled('//;s/')//" | sort -u || true)
+
+          NEW_FLAGS=$(comm -23 \
+            <(echo "$ADDED" | sort) \
+            <(echo "$REMOVED" | sort) || true)
+
+          if [ -z "$NEW_FLAGS" ]; then
+            echo "No new feature flags in this commit."
+            exit 0
+          fi
+
+          echo "New flags detected: $(echo $NEW_FLAGS | tr '\n' ' ')"
+
+          for FLAG in $NEW_FLAGS; do
+            VARNAME="FF_${FLAG}"
+            echo "Registering $VARNAME=false on Railway..."
+            railway variable set "${VARNAME}=false" \
+              --service 2fc9f58a-07e7-4555-bb6b-aac00e9c1c7e \
+              --environment 90f73af7-f191-4ae8-926f-bfde2b31d97f \
+              --skip-deploys \
+              && echo "  ✓ $VARNAME=false registered" \
+              || echo "  ⚠ $VARNAME could not be set — check RAILWAY_TOKEN secret"
+          done

@@ -1,0 +1,135 @@
+name: Post-Deploy Smoke Test
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  smoketest:
+    # On push: only run when a pipeline feature branch merge lands on main.
+    # On workflow_dispatch: always run (human triggered manually).
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, '[FR-')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      actions: write
+
+    steps:
+      - name: Wait for Railway deployment
+        run: |
+          URL="${{ vars.PRODUCTION_URL }}"
+          MAX_WAIT=300
+          ELAPSED=0
+          INTERVAL=15
+
+          echo "Polling $URL for up to ${MAX_WAIT}s..."
+          while [ $ELAPSED -lt $MAX_WAIT ]; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$URL/sign-in" 2>/dev/null || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "App responded with HTTP 200 after ${ELAPSED}s."
+              break
+            fi
+            echo "HTTP $STATUS at ${ELAPSED}s — waiting ${INTERVAL}s..."
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+
+          if [ "$STATUS" != "200" ]; then
+            echo "Timed out waiting for deployment."
+            exit 1
+          fi
+
+      - name: Run smoke tests
+        id: smoke
+        run: |
+          URL="${{ vars.PRODUCTION_URL }}"
+          FAILED=0
+
+          check() {
+            local desc="$1" endpoint="$2" expected="$3"
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$URL$endpoint" 2>/dev/null || echo "000")
+            if [ "$STATUS" = "$expected" ]; then
+              echo "✓ $desc (HTTP $STATUS)"
+            else
+              echo "✗ $desc — expected HTTP $expected, got $STATUS"
+              FAILED=1
+            fi
+          }
+
+          # App shell loads
+          check "Sign-in page" "/sign-in" "200"
+
+          # Unauthenticated API routes return 401, not 500 (proves app is up and Clerk is wired)
+          check "Auth guard — goals" "/api/goals" "401"
+          check "Auth guard — log"   "/api/log"   "401"
+          check "Auth guard — feed"  "/api/feed"  "401"
+
+          # Deep smoke check: DB connectivity + column presence + flag state
+          SMOKE=$(curl -s -o /tmp/smoke_body.txt -w "%{http_code}" \
+            --max-time 15 \
+            -H "x-smoke-secret: ${{ secrets.SMOKE_TEST_SECRET }}" \
+            "$URL/api/smoke" 2>/dev/null || echo "000")
+          if [ "$SMOKE" = "200" ]; then
+            echo "✓ Deep smoke check passed"
+            cat /tmp/smoke_body.txt
+          else
+            echo "✗ Deep smoke check FAILED (HTTP $SMOKE)"
+            cat /tmp/smoke_body.txt 2>/dev/null || true
+            FAILED=1
+          fi
+
+          if [ "$FAILED" -eq 0 ]; then
+            echo "passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "passed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Assign next issue (smoke tests passed)
+        if: steps.smoke.outputs.passed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CLAUDE_PIPELINE_TOKEN }}
+        run: |
+          echo "Smoke tests passed — triggering auto-sequence."
+          gh workflow run auto-sequence.yml --repo Ashtakala/wellness-tracker
+
+      - name: Reopen standing issue (smoke tests failed)
+        if: steps.smoke.outputs.passed != 'true' || failure()
+        env:
+          GH_TOKEN: ${{ secrets.CLAUDE_PIPELINE_TOKEN }}
+        run: |
+          REPO="Ashtakala/wellness-tracker"
+          LABEL="smoke-test-blocker"
+
+          ISSUE_NUMBER=$(gh issue list --repo "$REPO" --state all --label "$LABEL" \
+            --json number --jq '.[0].number // empty')
+
+          BODY="The post-deploy smoke test failed after merging to main. The pipeline is paused — no new issues will be picked up until this is resolved.
+
+          **Commit:** ${{ github.sha }}
+          **Triggered by:** ${{ github.actor }}
+
+          **What to do:**
+          1. Check Railway deployment logs for build or runtime errors
+          2. Fix the issue and push to main
+          3. The pipeline will resume automatically once the smoke test passes
+
+          *(This issue is reopened and updated by the post-deploy-smoketest workflow each time a failure occurs. Close it by fixing the underlying problem.)*"
+
+          if [ -n "$ISSUE_NUMBER" ]; then
+            echo "Reopening standing issue #$ISSUE_NUMBER"
+            gh issue reopen "$ISSUE_NUMBER" --repo "$REPO" 2>/dev/null || true
+            gh issue edit "$ISSUE_NUMBER" --repo "$REPO" --body "$BODY"
+            gh issue comment "$ISSUE_NUMBER" --repo "$REPO" \
+              --body "🔴 Smoke test failed on commit ${{ github.sha }} (triggered by ${{ github.actor }})"
+          else
+            echo "No standing issue found — creating one with label $LABEL"
+            gh label create "$LABEL" --repo "$REPO" --color "E11D48" \
+              --description "Standing smoke test failure — reopen instead of creating a new issue" \
+              2>/dev/null || true
+            gh issue create \
+              --repo "$REPO" \
+              --title "Production smoke test failed — pipeline paused" \
+              --label "$LABEL" \
+              --body "$BODY"
+          fi
