@@ -4,6 +4,26 @@ This repo uses a fully autonomous GitHub Actions pipeline to take raw feature id
 
 ---
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Setup & Configuration](#setup--configuration)
+  - [GitHub Secrets & Variables](#github-secrets--variables)
+  - [Railway Setup](#railway-setup)
+  - [Clerk Setup (Optional — Authenticated Apps)](#clerk-setup-optional--authenticated-apps)
+  - [Required GitHub Labels](#required-github-labels)
+  - [CLAUDE.md](#claudemd)
+- [Workflows at a Glance](#workflows-at-a-glance)
+- [Normal Lane — Feature Pipeline](#normal-lane--feature-pipeline)
+- [Hotfix Lane](#hotfix-lane)
+- [Failure Recovery](#failure-recovery)
+- [Supporting Workflows](#supporting-workflows)
+- [Cost & Usage Considerations](#cost--usage-considerations)
+- [Adapting to Your Stack](#adapting-to-your-stack)
+- [End-to-End Example](#end-to-end-example)
+
+---
+
 ## Overview
 
 ```mermaid
@@ -21,6 +41,92 @@ flowchart LR
 ```
 
 There are two lanes: the **normal lane** (sequenced feature work) and the **hotfix lane** (expedited production bugs). Both converge at the implement -> review -> deploy cycle.
+
+---
+
+## Setup & Configuration
+
+### GitHub Secrets & Variables
+
+Go to your repo → **Settings → Secrets and variables → Actions** and add the following.
+
+**Secrets** (Settings → Secrets → Actions → New repository secret):
+
+| Secret | How to get it | Purpose |
+|---|---|---|
+| `CLAUDE_CODE_OAUTH_TOKEN` | [claude.ai](https://claude.ai) → Settings → Claude Code → OAuth Token | Authenticates all Claude Code action steps with Anthropic |
+| `CLAUDE_PIPELINE_TOKEN` | GitHub → Settings → Developer settings → Personal access tokens → Fine-grained token; scopes: `contents`, `issues`, `pull_requests`, `workflows` | PAT used by the pipeline for all GitHub write operations (push, PR creation, dispatch, merge) |
+| `SMOKE_TEST_SECRET` | Generate any random string (e.g. `openssl rand -hex 32`) | Sent as a header to `/api/smoke` for the deep health check post-deploy |
+| `RAILWAY_TOKEN` | [railway.com](https://railway.com) → Account Settings → Tokens → New Token | Allows the pipeline to register feature flag variables in Railway |
+
+**Variables** (Settings → Secrets → Actions → Variables tab → New repository variable):
+
+| Variable | Example value | Purpose |
+|---|---|---|
+| `PRODUCTION_URL` | `https://my-app.up.railway.app` | Base URL the smoke test polls after each deploy |
+
+> `GITHUB_TOKEN` is provided automatically by GitHub Actions and is used for read operations and submitting PR reviews. It cannot trigger downstream workflows, which is why `CLAUDE_PIPELINE_TOKEN` is needed for all `workflow_dispatch` calls.
+
+---
+
+### Railway Setup
+
+This pipeline was built with [Railway](https://railway.com) as the deployment target. Railway auto-deploys on every push to `main`.
+
+1. **Create a Railway project** and connect it to your GitHub repository.
+2. **Enable auto-deploy** for the `main` branch (Railway → your service → Settings → Source → Branch: `main`).
+3. **Copy your public URL** (Railway → your service → Settings → Networking → Public URL) and save it as the `PRODUCTION_URL` repository variable above.
+4. **Create a Railway API token** (railway.com → Account Settings → Tokens) and save it as the `RAILWAY_TOKEN` secret above.
+5. **Add your app's environment variables** directly in the Railway dashboard (Railway → your project → Variables). The `sync-feature-flags.yml` workflow will automatically add new feature flag variables (`FF_*`) here as they appear in your code.
+
+The `post-deploy-smoketest.yml` workflow polls `PRODUCTION_URL` for up to 5 minutes after each merge to `main`, waiting for Railway's deployment to become live before running smoke checks.
+
+---
+
+### Clerk Setup (Optional — Authenticated Apps)
+
+If your app uses [Clerk](https://clerk.com) for authentication, the pipeline's smoke test already accounts for it — unauthenticated API routes returning `401` is treated as a signal that Clerk middleware is correctly wired.
+
+1. **Create a Clerk application** at [clerk.com](https://clerk.com).
+2. **Add Clerk environment variables to Railway** (not GitHub secrets — these need to be available at runtime):
+   - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+   - `CLERK_SECRET_KEY`
+3. **Ensure your middleware protects API routes** — the smoke test expects `/api/goals`, `/api/log`, and `/api/feed` to return `401` unauthenticated. Update the route list in `post-deploy-smoketest.yml` to match your actual protected routes.
+4. **Implement `/api/smoke`** in your app — an endpoint that, when called with the `X-Smoke-Secret` header matching `SMOKE_TEST_SECRET`, returns `200` with a shallow DB connectivity check.
+
+> If you're not using Clerk, update the smoke test checks in `post-deploy-smoketest.yml` to match whatever auth scheme your app uses (or remove the `401` checks entirely).
+
+---
+
+### Required GitHub Labels
+
+The pipeline relies on these labels being present in your repo. Create them at **GitHub → Issues → Labels → New label**.
+
+| Label | Purpose |
+|---|---|
+| `po-agent` | Triggers the PO agent to break a raw idea into sub-issues |
+| `ready-for-dev` | Triggers Claude to implement an issue |
+| `hotfix` | Bypasses the seq queue and sends an issue straight to implementation |
+| `stalled` | Applied when an implement run exhausts its turn budget; picked up by the watchdog |
+| `smoke-test-blocker` | Applied to the standing blocker issue when a smoke test fails |
+| `seq:N` | Created dynamically by the PO agent (seq:1 through seq:50); no need to pre-create |
+
+---
+
+### CLAUDE.md
+
+Each project using this pipeline must have a `CLAUDE.md` at the repo root. Claude reads this file at the start of every implement and review run to understand your project's conventions.
+
+At minimum, include:
+
+- **Tech stack** — framework, database, ORM, auth provider
+- **Code conventions** — naming, file structure, patterns to follow or avoid
+- **Auth rules** — how routes should be protected, what auth checks to include
+- **Test requirements** — where tests live, what test runner is used, coverage expectations
+- **Build commands** — exact commands Claude should run to verify changes (`npm run build`, `npm run lint`, `npm test`)
+- **Off-limits files** — files Claude should never modify (e.g. `lib/flags.ts`, migration lock files)
+
+The more specific your `CLAUDE.md`, the more consistent the pipeline's output will be.
 
 ---
 
@@ -225,16 +331,33 @@ Runs `npm audit --audit-level=high` on every push and PR to `main`.
 
 ---
 
-## Key Secrets and Tokens
+## Cost & Usage Considerations
 
-| Secret | Used by | Purpose |
+Every workflow that invokes Claude Code consumes from your Claude Code Pro or API quota. Here's what to expect:
+
+- **`claude-implement.yml`** — highest cost per run; Claude reads the full codebase, writes code, and iterates on build/lint/test errors. Budget up to 60 turns per issue.
+- **`claude-review.yml`** and **`claude-fix-review.yml`** — moderate cost; reads diff + test output, writes a review or applies targeted fixes.
+- **`po-agent.yml`** and **`pipeline-watchdog.yml`** — low cost; short-context reasoning tasks.
+
+**Tips to manage usage:**
+- Keep issues small and single-layer (the PO agent enforces this, but well-written raw ideas help).
+- A thorough `CLAUDE.md` reduces back-and-forth in the fix/review loop.
+- `claude-retry.yml` automatically re-runs usage-limited failures daily — no need to manually re-trigger after a quota reset.
+- If you hit limits frequently, consider splitting the workload across multiple repos or using the API (MAX plan) instead of Claude Code Pro.
+
+---
+
+## Adapting to Your Stack
+
+This pipeline was built for a **Next.js + Prisma + Railway + Clerk** stack, but most of it is stack-agnostic. Here's what to change if your setup differs:
+
+| Component | Where it's referenced | What to change |
 |---|---|---|
-| `CLAUDE_CODE_OAUTH_TOKEN` | All Claude Code action steps | Authenticates with Anthropic to run Claude |
-| `CLAUDE_PIPELINE_TOKEN` | Push, PR creation, dispatch, issue ops, merge | PAT used by the pipeline for all GitHub write operations |
-| `SMOKE_TEST_SECRET` | `post-deploy-smoketest.yml` | Header secret for `/api/smoke` deep check |
-| `RAILWAY_TOKEN` | `sync-feature-flags.yml` | Railway CLI authentication |
-
-> `GITHUB_TOKEN` (automatic) is used for read operations and for submitting PR reviews — its limited scope prevents it from triggering downstream workflows, which is why `CLAUDE_PIPELINE_TOKEN` is used for all `workflow_dispatch` calls.
+| **Deployment platform** (not Railway) | `post-deploy-smoketest.yml` (step name), `sync-feature-flags.yml` (entire workflow), `claude-auto-merge.yml` (comment) | Replace `sync-feature-flags.yml` with your platform's CLI equivalent; update smoke test polling logic if deploy signal differs |
+| **Auth provider** (not Clerk) | `post-deploy-smoketest.yml` lines 28 and 63 | Change `/sign-in` readiness probe to your login route; change `401` expectation to whatever your middleware returns unauthenticated |
+| **Package manager** (not npm/bun) | `claude-implement.yml`, `claude-review.yml`, `claude-fix-review.yml` | Replace `npm run build`, `npm run lint`, `npm test` with your equivalents in each workflow's build/test steps |
+| **ORM** (not Prisma) | `claude-review.yml` schema-migration check | Update or remove the check that fails PRs with schema changes but no migration file |
+| **Branch naming** | `claude-review.yml`, `claude-auto-merge.yml`, `sync-main-to-features.yml` | Workflows filter on `feature/issue-*`; change the pattern if your branches are named differently |
 
 ---
 
