@@ -1,0 +1,66 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project
+
+<!-- One paragraph describing what the project does and who uses it. -->
+<!-- Example: "A WhatsApp-integrated group fitness PWA. Users log daily wellness metrics; the app broadcasts updates to a shared WhatsApp group and surfaces a weekly AI recap." -->
+
+## Stack
+
+<!-- List the key technologies. Claude uses this to know which patterns, imports, and conventions apply. -->
+
+- **Framework:** <!-- e.g. Next.js 16 (App Router) -->
+- **Auth:** <!-- e.g. Clerk, NextAuth, custom JWT -->
+- **Database:** <!-- e.g. PostgreSQL via Prisma ORM -->
+- **Deployment:** <!-- e.g. Railway, Vercel, AWS -->
+- **Styling:** <!-- e.g. Tailwind CSS -->
+
+## Setup & Commands
+
+```bash
+# Install dependencies
+npm install
+
+# Start dev server
+npm run dev
+
+# Run tests
+npm test
+
+# Lint
+npm run lint
+
+# Build
+npm run build
+```
+
+<!-- Add any project-specific commands, e.g. database generation, migrations, seed scripts. -->
+
+## Environment Variables
+
+<!-- List required environment variables so Claude doesn't invent incorrect names. -->
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | Database connection string |
+| `...` | ... |
+
+## Key Conventions
+
+<!-- List conventions Claude must follow. These are the rules that, if broken, cause bugs or CI failures. -->
+
+- <!-- Example: "All API routes must call auth() and return 401 if unauthenticated." -->
+- <!-- Example: "Use prisma.$transaction for any multi-table writes." -->
+- <!-- Example: "No `any` in TypeScript — define request/response types inline in route files." -->
+
+## Folder Structure
+
+```
+<!-- Describe the folder layout so Claude navigates correctly. -->
+src/
+  api/        — API routes
+  components/ — React components
+  lib/        — Shared utilities
+```
