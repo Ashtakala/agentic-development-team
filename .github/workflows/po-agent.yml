@@ -16,7 +16,7 @@ jobs:
     permissions:
       contents: read
       issues: write
-    uses: Ashtakala/claude-pipeline/.github/workflows/po-agent.yml@v1
+    uses: YOUR_ORG/YOUR_PIPELINE_REPO/.github/workflows/po-agent.yml@v1
     with:
       issue_number: ${{ github.event.issue.number }}
     secrets:

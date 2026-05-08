@@ -8,4 +8,4 @@ on:
 
 jobs:
   audit:
-    uses: Ashtakala/claude-pipeline/.github/workflows/security.yml@v1
+    uses: YOUR_ORG/YOUR_PIPELINE_REPO/.github/workflows/security.yml@v1

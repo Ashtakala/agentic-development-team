@@ -91,14 +91,14 @@ jobs:
           GH_TOKEN: ${{ secrets.CLAUDE_PIPELINE_TOKEN }}
         run: |
           echo "Smoke tests passed — triggering auto-sequence."
-          gh workflow run auto-sequence.yml --repo Ashtakala/wellness-tracker
+          gh workflow run auto-sequence.yml --repo ${{ github.repository }}
 
       - name: Reopen standing issue (smoke tests failed)
         if: steps.smoke.outputs.passed != 'true' || failure()
         env:
           GH_TOKEN: ${{ secrets.CLAUDE_PIPELINE_TOKEN }}
         run: |
-          REPO="Ashtakala/wellness-tracker"
+          REPO="${{ github.repository }}"
           LABEL="smoke-test-blocker"
 
           ISSUE_NUMBER=$(gh issue list --repo "$REPO" --state all --label "$LABEL" \

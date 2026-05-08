@@ -21,8 +21,8 @@ jobs:
           GH_TOKEN: ${{ secrets.CLAUDE_PIPELINE_TOKEN }}
         run: |
           PR_NUMBER=${{ github.event.pull_request.number }}
-          PR_TITLE=$(gh pr view "$PR_NUMBER" --repo Ashtakala/wellness-tracker --json title --jq .title)
-          BRANCH=$(gh pr view "$PR_NUMBER" --repo Ashtakala/wellness-tracker --json headRefName --jq .headRefName)
+          PR_TITLE=$(gh pr view "$PR_NUMBER" --repo ${{ github.repository }} --json title --jq .title)
+          BRANCH=$(gh pr view "$PR_NUMBER" --repo ${{ github.repository }} --json headRefName --jq .headRefName)
 
           # Squash merge via API with a clean commit message — no Co-Authored-By lines.
           # Using gh pr merge --squash copies individual commit messages (which include
@@ -30,7 +30,7 @@ jobs:
           # to see a third non-GitHub author and skip the deploy.
           gh api \
             --method PUT \
-            "/repos/Ashtakala/wellness-tracker/pulls/$PR_NUMBER/merge" \
+            "/repos/${{ github.repository }}/pulls/$PR_NUMBER/merge" \
             -f commit_title="$PR_TITLE" \
             -f commit_message="" \
             -f merge_method="squash"
@@ -38,5 +38,5 @@ jobs:
           # Delete the feature branch
           gh api \
             --method DELETE \
-            "/repos/Ashtakala/wellness-tracker/git/refs/heads/$BRANCH" \
+            "/repos/${{ github.repository }}/git/refs/heads/$BRANCH" \
             || true

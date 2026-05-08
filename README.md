@@ -8,6 +8,7 @@ This repo uses a fully autonomous GitHub Actions pipeline to take raw feature id
 
 - [Overview](#overview)
 - [Setup & Configuration](#setup--configuration)
+  - [Reusable Workflow Repo](#reusable-workflow-repo)
   - [GitHub Secrets & Variables](#github-secrets--variables)
   - [Railway Setup](#railway-setup)
   - [Clerk Setup (Optional — Authenticated Apps)](#clerk-setup-optional--authenticated-apps)
@@ -45,6 +46,22 @@ There are two lanes: the **normal lane** (sequenced feature work) and the **hotf
 ---
 
 ## Setup & Configuration
+
+### Reusable Workflow Repo
+
+Eleven of the workflows in this repo delegate their actual implementation to a shared reusable workflow library via `uses:`:
+
+```yaml
+uses: YOUR_ORG/YOUR_PIPELINE_REPO/.github/workflows/claude-implement.yml@v1
+```
+
+Before the pipeline will run, you need to replace `YOUR_ORG/YOUR_PIPELINE_REPO` with the actual `org/repo` path of your reusable workflow library. Do a find-and-replace across all files in `.github/workflows/` — it appears in:
+
+`auto-sequence.yml`, `claude-fix-review.yml`, `claude-implement.yml`, `claude-resolve-conflicts.yml`, `claude-retry.yml`, `claude-review.yml`, `hotfix.yml`, `pipeline-watchdog.yml`, `po-agent.yml`, `security.yml`, `sync-main-to-features.yml`
+
+> Note: the `uses:` field in GitHub Actions does not support expressions like `${{ github.repository }}` — it must be a literal `org/repo` string.
+
+---
 
 ### GitHub Secrets & Variables
 

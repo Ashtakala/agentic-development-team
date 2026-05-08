@@ -10,7 +10,7 @@ jobs:
     if: contains(github.event.issue.labels.*.name, 'hotfix') && github.event.issue.user.type != 'Bot'
     permissions:
       issues: write
-    uses: Ashtakala/claude-pipeline/.github/workflows/hotfix.yml@v1
+    uses: YOUR_ORG/YOUR_PIPELINE_REPO/.github/workflows/hotfix.yml@v1
     with:
       issue_number: ${{ github.event.issue.number }}
     secrets:

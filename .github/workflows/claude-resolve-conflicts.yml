@@ -13,7 +13,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    uses: Ashtakala/claude-pipeline/.github/workflows/claude-resolve-conflicts.yml@v1
+    uses: YOUR_ORG/YOUR_PIPELINE_REPO/.github/workflows/claude-resolve-conflicts.yml@v1
     with:
       pr_number: ${{ inputs.pr_number }}
     secrets:

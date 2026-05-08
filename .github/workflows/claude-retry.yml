@@ -11,6 +11,6 @@ jobs:
     permissions:
       actions: read
       issues: write
-    uses: Ashtakala/claude-pipeline/.github/workflows/claude-retry.yml@v1
+    uses: YOUR_ORG/YOUR_PIPELINE_REPO/.github/workflows/claude-retry.yml@v1
     secrets:
       CLAUDE_PIPELINE_TOKEN: ${{ secrets.CLAUDE_PIPELINE_TOKEN }}

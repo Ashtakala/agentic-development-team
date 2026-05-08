@@ -15,7 +15,7 @@ jobs:
       pull-requests: write
       issues: read
       actions: read
-    uses: Ashtakala/claude-pipeline/.github/workflows/claude-fix-review.yml@v1
+    uses: YOUR_ORG/YOUR_PIPELINE_REPO/.github/workflows/claude-fix-review.yml@v1
     with:
       pr_number: ${{ inputs.pr_number }}
     secrets:
